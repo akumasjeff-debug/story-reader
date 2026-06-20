@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#4CAF82">
+<meta property="og:title" content="故事書朗讀器">
+<meta property="og:description" content="拍下英文繪本，用爸媽的聲音唸給孩子聽。免費、免安裝。">
+<title>故事書朗讀器</title>
+<style>
+:root {
+  --accent: #4CAF82;
+  --accent2: #5C6BC0;
+  --purple: #9C27B0;
+  --bg: #F8F9FA;
+  --card: #FFFFFF;
+  --muted: #888;
+  --zh-font-size: 20px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: -apple-system, 'SF Pro Text', sans-serif; background: var(--bg); color: #222; -webkit-text-size-adjust: 100%; }
+
+/* ══ STATES ══ */
+.state { display: none; flex-direction: column; min-height: 100dvh; }
+.state.active { display: flex; }
+
+/* ══ SETTINGS BTN (always visible) ══ */
+.fab-settings {
+  position: fixed; top: calc(var(--safe-t) + 10px); right: 14px;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
+  border: 1px solid rgba(0,0,0,0.08); cursor: pointer;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12); z-index: 50;
+  transition: transform 0.15s;
+}
+.fab-settings:active { transform: scale(0.92); }
+
+/* ══ CAPTURE ══ */
+#st-capture {
+  align-items: center; justify-content: center; gap: 24px;
+  padding: calc(var(--safe-t) + 60px) 32px calc(var(--safe-b) + 40px);
+  text-align: center;
+}
+.app-logo { font-size: 56px; line-height: 1; }
+.app-title { font-size: 22px; font-weight: 700; color: #1A1A1A; letter-spacing: -0.3px; }
+.app-sub { font-size: 14px; color: var(--muted); line-height: 1.5; max-width: 240px; }
+.capture-btn {
+  width: 150px; height: 150px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #2E9B6A);
+  border: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; color: #fff; font-weight: 600; font-size: 14px;
+  box-shadow: 0 12px 40px rgba(76,175,130,0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.capture-btn:active { transform: scale(0.95); box-shadow: 0 6px 20px rgba(76,175,130,0.35); }
+.capture-icon { font-size: 52px; }
+input[type=file] { display: none; }
+.voice-promo {
+  background: linear-gradient(135deg, #F3E5F5, #EDE7F6);
+  border-radius: 14px; padding: 14px 18px; max-width: 300px;
+  text-align: left; cursor: pointer; transition: transform 0.15s;
+}
+.voice-promo:active { transform: scale(0.98); }
+.voice-promo-title { font-size: 13px; font-weight: 700; color: #6A1B9A; margin-bottom: 4px; }
+.voice-promo-sub { font-size: 12px; color: #7B1FA2; line-height: 1.5; }
+.stats-strip { font-size: 12px; color: #AAA; }
+
+/* ══ LOADING ══ */
+#st-loading {
+  align-items: center; justify-content: center; gap: 20px;
+  padding: 60px 40px;
+}
+.load-icon { font-size: 48px; animation: bob 1.2s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.load-label { font-size: 17px; font-weight: 700; color: #333; }
+.load-sub { font-size: 13px; color: var(--muted); }
+.bar-wrap { width: 220px; height: 6px; background: #E5E5E5; border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 3px; width: 0; transition: width 0.5s ease; }
+
+/* ══ RESULTS ══ */
+#st-results { padding-bottom: calc(var(--safe-b) + 72px); }
+.res-header {
+  padding: calc(var(--safe-t) + 10px) 16px 10px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid #EBEBEB;
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+  position: sticky; top: 0; z-index: 10;
+}
+.retake-btn {
+  padding: 7px 14px; border: 1.5px solid #DDD; border-radius: 20px;
+  background: none; font-size: 13px; cursor: pointer; font-weight: 500;
+  transition: background 0.15s;
+}
+.retake-btn:active { background: #F0F0F0; }
+.engine-tag {
+  font-size: 11px; padding: 3px 9px; border-radius: 10px;
+  background: #E8F5E9; color: #2E7D32; font-weight: 600;
+}
+.stats-header { font-size: 12px; color: #BBB; margin-left: auto; }
+
+.res-scroll { padding: 14px 16px; }
+
+/* Vocab */
+.vocab-section { margin-bottom: 16px; }
+.section-label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
+.vocab-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.vocab-row::-webkit-scrollbar { display: none; }
+.vocab-card {
+  flex-shrink: 0; background: var(--card); border: 1.5px solid #EDEDED;
+  border-radius: 12px; padding: 8px 14px; cursor: pointer; text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.vocab-card:active { background: #F5F5F5; border-color: var(--accent); }
+.v-en { font-size: 13px; font-weight: 700; color: #2C2C2C; }
+.v-zh { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Segments */
+.seg-card {
+  background: var(--card); border-radius: 16px; padding: 14px 16px;
+  margin-bottom: 10px; display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+  transition: border-left 0.15s;
+}
+.seg-card.playing {
+  border-left: 3px solid var(--accent);
+  padding-left: 13px;
+}
+.seg-text { flex: 1; min-width: 0; }
+.seg-zh { font-size: var(--zh-font-size); line-height: 1.55; color: #1A1A1A; margin-bottom: 5px; }
+.seg-en { font-size: 12px; color: #AAA; line-height: 1.4; }
+.word.lit { background: #FFD700; border-radius: 2px; padding: 0 1px; }
+.seg-btn {
+  width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+  background: var(--accent); border: none; color: #fff;
+  font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.15s, background 0.15s;
+}
+.seg-btn:active { opacity: 0.75; }
+.seg-btn.busy { background: #C8C8C8; pointer-events: none; }
+
+/* ══ BOTTOM BAR ══ */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+  background: rgba(255,255,255,0.96); backdrop-filter: blur(10px);
+  border-top: 1px solid #EBEBEB;
+  padding: 10px 16px calc(var(--safe-b) + 10px);
+  display: flex; align-items: center; gap: 10px;
+}
+.btn-play-all {
+  flex: 1; height: 46px; border-radius: 23px;
+  background: var(--accent2); color: #fff; border: none;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-play-all.stop { background: #E53935; }
+.btn-share {
+  width: 46px; height: 46px; border-radius: 23px;
+  background: #F0F0F0; border: none; font-size: 20px; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-share:active { background: #E0E0E0; }
+
+/* ══ SHEETS ══ */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45); z-index: 100; backdrop-filter: blur(2px);
+}
+.overlay.open { display: block; }
+.sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 101;
+  background: #FFF; border-radius: 22px 22px 0 0;
+  padding: 0 20px calc(var(--safe-b) + 20px);
+  max-height: 88dvh; overflow-y: auto;
+  transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32,0.72,0,1);
+}
+.sheet.open { transform: translateY(0); }
+.sheet-handle { width: 36px; height: 4px; background: #DDD; border-radius: 2px; margin: 14px auto 16px; }
+.sheet-title { font-size: 17px; font-weight: 800; margin-bottom: 18px; }
+.s-label { font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.s-row { margin-bottom: 18px; }
+.s-input {
+  width: 100%; padding: 11px 14px; border: 1.5px solid #E0E0E0;
+  border-radius: 12px; font-size: 14px; outline: none;
+  transition: border-color 0.15s;
+}
+.s-input:focus { border-color: var(--accent); }
+.s-btn {
+  display: block; width: 100%; padding: 13px; border-radius: 13px;
+  border: none; font-size: 14px; font-weight: 700; cursor: pointer;
+  margin-top: 8px; transition: opacity 0.15s;
+}
+.s-btn:active { opacity: 0.8; }
+.s-btn.green { background: var(--accent); color: #fff; }
+.s-btn.purple { background: var(--purple); color: #fff; }
+.s-btn.ghost { background: #F4F4F4; color: #444; }
+.s-btn.danger { background: #FFEBEE; color: #C62828; }
+.status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #D5D5D5; flex-shrink: 0; }
+.dot.on { background: #43A047; }
+.dot.warn { background: #FB8C00; }
+.s-info { font-size: 12px; color: #AAA; line-height: 1.6; margin-top: 8px; }
+.divider { height: 1px; background: #F0F0F0; margin: 18px 0; }
+.rate-wrap { display: flex; align-items: center; gap: 10px; }
+.rate-wrap input { flex: 1; }
+.rate-val { font-size: 13px; color: var(--muted); min-width: 38px; text-align: right; }
+.slow-wrap { display: flex; align-items: center; justify-content: space-between; }
+.toggle { position: relative; width: 50px; height: 28px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; background: #CCC; border-radius: 14px;
+  cursor: pointer; transition: background 0.2s;
+}
+.slider::before {
+  content: ''; position: absolute; width: 24px; height: 24px;
+  left: 2px; top: 2px; background: #FFF; border-radius: 50%;
+  transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+input:checked + .slider { background: var(--accent); }
+input:checked + .slider::before { transform: translateX(22px); }
+
+/* ══ RECORDING OVERLAY ══ */
+#rec-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: linear-gradient(160deg, #1A0033 0%, #0D1A2E 100%);
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; padding: calc(var(--safe-t)+20px) 32px calc(var(--safe-b)+20px);
+}
+#rec-overlay.open { display: flex; }
+.rec-title { font-size: 20px; font-weight: 800; color: #FFF; text-align: center; }
+.rec-script {
+  background: rgba(255,255,255,0.08); border-radius: 14px;
+  padding: 18px; font-size: 15px; line-height: 1.8; color: rgba(255,255,255,0.85);
+  text-align: center; max-width: 320px;
+}
+.rec-timer {
+  font-size: 48px; font-weight: 200; color: #FFF;
+  font-variant-numeric: tabular-nums; letter-spacing: 2px;
+}
+.rec-ring {
+  width: 88px; height: 88px; border-radius: 50%;
+  background: #E53935; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 36px;
+  box-shadow: 0 0 0 0 rgba(229,57,53,0.5);
+  transition: transform 0.15s;
+}
+.rec-ring:active { transform: scale(0.93); }
+.rec-ring.pulse { animation: ring-pulse 1s ease infinite; }
+@keyframes ring-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(229,57,53,0.6); }
+  60% { box-shadow: 0 0 0 18px rgba(229,57,53,0); }
+}
+.rec-hint { font-size: 13px; color: rgba(255,255,255,0.55); text-align: center; }
+.rec-cancel-btn {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25);
+  color: #FFF; border-radius: 22px; padding: 10px 28px;
+  font-size: 14px; cursor: pointer; transition: background 0.15s;
+}
+.rec-cancel-btn:active { background: rgba(255,255,255,0.18); }
+</style>
+</head>
+<body>
+
+<button class="fab-settings" onclick="openSettings()">⚙️</button>
+
+<!-- ══════════════════ CAPTURE ══════════════════ -->
+<div id="st-capture" class="state active">
+  <div class="app-logo">📚</div>
+  <div class="app-title">故事書朗讀器</div>
+  <div class="app-sub">拍下英文繪本，自動翻譯成中文並朗讀</div>
+  <button class="capture-btn" onclick="document.getElementById('file-in').click()">
+    <span class="capture-icon">📷</span>
+    <span>拍照開始</span>
+  </button>
+  <input type="file" id="file-in" accept="image/*" capture="environment" onchange="handleCapture(this)">
+  <div class="voice-promo" onclick="openSettings()">
+    <div class="voice-promo-title">🎙 用爸媽的聲音唸故事</div>
+    <div class="voice-promo-sub">設定完成後，App 會改用你的聲音朗讀。錄音 30 秒即可設定。</div>
+  </div>
+  <div class="stats-strip">今晚讀了 <span id="c-pages">0</span> 頁・<span id="c-sents">0</span> 句</div>
+</div>
+
+<!-- ══════════════════ LOADING ══════════════════ -->
+<div id="st-loading" class="state">
+  <div class="load-icon">🔍</div>
+  <div class="load-label" id="load-lbl">上傳中</div>
+  <div class="bar-wrap"><div class="bar-fill" id="load-bar"></div></div>
+  <div class="load-sub" id="load-sub">正在傳送圖片…</div>
+</div>
+
+<!-- ══════════════════ RESULTS ══════════════════ -->
+<div id="st-results" class="state">
+  <div class="res-header">
+    <button class="retake-btn" onclick="retake()">🔄 重拍</button>
+    <span class="engine-tag" id="engine-tag">🌐 Gemini</span>
+    <span class="stats-header">今晚 <span id="r-pages">0</span>頁 <span id="r-sents">0</span>句</span>
+  </div>
+  <div class="res-scroll" id="res-scroll">
+    <div id="vocab-section" style="display:none" class="vocab-section">
+      <div class="section-label">本頁單字</div>
+      <div class="vocab-row" id="vocab-row"></div>
+    </div>
+    <div id="segs-wrap"></div>
+  </div>
+  <div class="bottom-bar">
+    <button class="btn-play-all" id="btn-play-all" onclick="togglePlayAll()">▶ 播全頁</button>
+    <button class="btn-share" onclick="shareApp()">📤</button>
+  </div>
+</div>
+
+<!-- ══════════════════ SETTINGS SHEET ══════════════════ -->
+<div class="overlay" id="ol-settings" onclick="closeSettings()"></div>
+<div class="sheet" id="sh-settings">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">設定</div>
+
+  <!-- Gemini -->
+  <div class="s-row">
+    <div class="s-label">Gemini API Key（OCR 必填）</div>
+    <div class="status-row">
+      <div class="dot" id="dot-gemini"></div>
+      <span style="font-size:13px;color:#555" id="st-gemini">未設定</span>
+    </div>
+    <input class="s-input" id="in-gemini" type="password" placeholder="AIza…">
+    <button class="s-btn green" onclick="saveGemini()">儲存 Gemini Key</button>
+    <button class="s-btn ghost" onclick="showGuide()" style="margin-top:6px">如何取得免費 API Key？</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ElevenLabs -->
+  <div class="s-row">
+    <div class="s-label">🎙 爸媽聲線（ElevenLabs，選填）</div>
+    <div class="status-row">
+      <div class="dot" id="dot-el"></div>
+      <span style="font-size:13px;color:#555" id="st-el">未設定</span>
+    </div>
+    <input class="s-input" id="in-el" type="password" placeholder="ElevenLabs API Key…">
+    <button class="s-btn purple" onclick="saveEl()">儲存並設定聲線</button>
+    <div id="voice-controls" style="display:none;margin-top:12px">
+      <div class="status-row">
+        <div class="dot" id="dot-voice"></div>
+        <span style="font-size:13px;color:#555" id="st-voice">尚未錄製</span>
+      </div>
+      <button class="s-btn purple" id="btn-rec" onclick="openRec()">🎙 錄製聲線（30 秒）</button>
+      <button class="s-btn danger" id="btn-clear-voice" style="display:none;margin-top:6px" onclick="clearVoice()">清除聲線</button>
+    </div>
+    <div class="s-info">設定後 App 將用你的聲音朗讀故事。<br>ElevenLabs 免費版每月 10,000 字（約 60 頁繪本）。</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Speed -->
+  <div class="s-row">
+    <div class="s-label">語速</div>
+    <div class="rate-wrap">
+      <span style="font-size:12px;color:#AAA">慢</span>
+      <input type="range" min="0.5" max="1.5" step="0.05" id="rate-sl" value="0.85" oninput="setRate(this.value)">
+      <span style="font-size:12px;color:#AAA">快</span>
+      <span class="rate-val" id="rate-lbl">0.85x</span>
+    </div>
+  </div>
+  <div class="slow-wrap">
+    <span style="font-size:14px;color:#444">🐢 慢速魔法模式</span>
+    <label class="toggle">
+      <input type="checkbox" id="slow-tog" onchange="setSlow(this.checked)">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <button class="s-btn ghost" onclick="closeSettings()" style="margin-top:20px">關閉</button>
+</div>
+
+<!-- Guide sheet -->
+<div class="overlay" id="ol-guide" onclick="closeGuide()"></div>
+<div class="sheet" id="sh-guide">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">取得免費 Gemini API Key</div>
+  <div style="font-size:14px;line-height:2;color:#333">
+    <b>1.</b> 用 Google 帳號登入：<br>
+    &nbsp;&nbsp;<code style="background:#F5F5F5;padding:2px 6px;border-radius:4px">aistudio.google.com</code><br>
+    <b>2.</b> 點「<b>Get API Key</b>」→「<b>Create API Key</b>」<br>
+    <b>3.</b> 複製以 <code>AIza</code> 開頭的 Key<br>
+    <b>4.</b> 貼到設定 → 儲存<br><br>
+    <span style="font-size:12px;color:#AAA">免費版每天 1500 次請求，家庭使用完全夠用。</span>
+  </div>
+  <button class="s-btn ghost" onclick="closeGuide()" style="margin-top:18px">← 返回</button>
+</div>
+
+<!-- ══════════════════ RECORDING OVERLAY ══════════════════ -->
+<div id="rec-overlay">
+  <div class="rec-title">錄製你的聲音</div>
+  <div class="rec-script">
+    請自然地唸出以下文字：<br><br>
+    「今天我要唸一個很棒的故事。從前從前，有一隻小狐狸住在大森林裡。牠每天早上都會出去找好朋友一起玩。森林裡的樹葉是綠色的，天空是藍色的，小狐狸的心情也是快樂的。」
+  </div>
+  <div class="rec-timer" id="rec-timer">0:00</div>
+  <div class="rec-ring" id="rec-ring" onclick="toggleRec()">🎙</div>
+  <div class="rec-hint" id="rec-hint">點擊開始錄音</div>
+  <button class="rec-cancel-btn" onclick="cancelRec()">取消</button>
+</div>
+
+<script>
+/* ════════════════════════════════════
+   CONFIG & STATE
+   ════════════════════════════════════ */
+const S = {
+  geminiKey: localStorage.getItem('gk') || '',
+  elKey:     localStorage.getItem('ek') || '',
+  elVoiceId: localStorage.getItem('ev') || '',
+  rate:      parseFloat(localStorage.getItem('rate') || '0.85'),
+  slowMode:  localStorage.getItem('slow') === '1',
+};
+
+let segs = [];
+let playingAll = false;
+let curIdx = -1;
+let mediaRec = null;
+let recChunks = [];
+let recTick = null;
+let recSec = 0;
+
+/* Init UI */
+document.getElementById('rate-sl').value = S.rate;
+document.getElementById('rate-lbl').textContent = S.rate.toFixed(2) + 'x';
+document.getElementById('slow-tog').checked = S.slowMode;
+if (S.slowMode) document.documentElement.style.setProperty('--zh-font-size', '26px');
+refreshStatus();
+refreshStats();
+
+/* ════════════════════════════════════
+   NAVIGATION
+   ════════════════════════════════════ */
+function show(id) {
+  document.querySelectorAll('.state').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function retake() {
+  window.speechSynthesis.cancel();
+  playingAll = false;
+  curIdx = -1;
+  resetPlayAllBtn();
+  show('st-capture');
+}
+
+/* ════════════════════════════════════
+   CAPTURE
+   ════════════════════════════════════ */
+async function handleCapture(inp) {
+  const file = inp.files[0];
+  if (!file) return;
+  inp.value = '';
+
+  if (!S.geminiKey) {
+    alert('請先在設定中填入 Gemini API Key（免費）');
+    openSettings();
+    return;
+  }
+
+  show('st-loading');
+  setLoad('上傳中', '正在壓縮圖片…', 8);
+
+  try {
+    const blob = await compress(file);
+    const b64  = await toBase64(blob);
+    setLoad('辨識文字中', '正在讀取繪本文字…', 35);
+
+    const result = await geminiScan(b64);
+    setLoad('翻譯完成', '準備好了！', 100);
+    await wait(350);
+
+    segs = result.segments || [];
+    renderResults(result);
+
+    const p = (+sessionStorage.getItem('pr') || 0) + 1;
+    const s = (+sessionStorage.getItem('sr') || 0) + segs.length;
+    sessionStorage.setItem('pr', p);
+    sessionStorage.setItem('sr', s);
+    refreshStats();
+
+    show('st-results');
+  } catch (e) {
+    show('st-capture');
+    alert('錯誤：' + (e.message || '請確認 API Key 正確後重試'));
+  }
+}
+
+function setLoad(lbl, sub, pct) {
+  document.getElementById('load-lbl').textContent = lbl;
+  document.getElementById('load-sub').textContent = sub;
+  document.getElementById('load-bar').style.width = pct + '%';
+}
+
+/* ════════════════════════════════════
+   IMAGE COMPRESSION
+   ════════════════════════════════════ */
+function compress(file, maxPx = 1920, q = 0.85) {
+  return new Promise(res => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (Math.max(w, h) > maxPx) { const r = maxPx / Math.max(w, h); w = ~~(w*r); h = ~~(h*r); }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob(b => { URL.revokeObjectURL(url); res(b); }, 'image/jpeg', q);
+    };
+    img.src = url;
+  });
+}
+
+function toBase64(blob) {
+  return new Promise(res => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.readAsDataURL(blob);
+  });
+}
+
+/* ════════════════════════════════════
+   GEMINI OCR + TRANSLATE + SEGMENT
+   ════════════════════════════════════ */
+async function geminiScan(b64) {
+  const prompt = `You are a reading assistant for children's books.
+
+Look at this image and:
+1. Extract ALL text visible on the page.
+2. Translate each sentence to Traditional Chinese (繁體中文), natural Taiwan style.
+3. Split into natural reading segments (1-2 short sentences each, max 50 Chinese characters per segment).
+4. Find up to 5 interesting vocabulary words for a young child to learn.
+
+Return ONLY valid JSON, no markdown, no explanation:
+{
+  "segments": [{"en": "...", "zh": "..."}],
+  "vocab": [{"word": "english_word", "zh": "中文意思"}]
+}
+
+If no readable text is found, return: {"segments":[],"vocab":[]}`;
+
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${S.geminiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+        ]}],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+      })
+    }
+  );
+
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    const msg = e.error?.message || '';
+    if (msg.includes('API_KEY')) throw new Error('API Key 無效，請重新設定');
+    if (r.status === 429) throw new Error('今日請求次數已達上限，明天再試');
+    throw new Error('Gemini 錯誤 ' + r.status);
+  }
+
+  const d = await r.json();
+  const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('回傳格式錯誤，請重拍');
+  return JSON.parse(m[0]);
+}
+
+/* ════════════════════════════════════
+   RENDER RESULTS
+   ════════════════════════════════════ */
+function renderResults(result) {
+  // Vocab
+  const vs = document.getElementById('vocab-section');
+  const vr = document.getElementById('vocab-row');
+  vr.innerHTML = '';
+  if (result.vocab?.length) {
+    result.vocab.forEach(v => {
+      const c = document.createElement('div');
+      c.className = 'vocab-card';
+      c.innerHTML = `<div class="v-en">${esc(v.word)}</div><div class="v-zh">${esc(v.zh)}</div>`;
+      c.onclick = () => speak(v.word, 'en-US');
+      vr.appendChild(c);
+    });
+    vs.style.display = '';
+  } else {
+    vs.style.display = 'none';
+  }
+
+  // Segments
+  const wrap = document.getElementById('segs-wrap');
+  wrap.innerHTML = '';
+  segs.forEach((seg, i) => {
+    const card = document.createElement('div');
+    card.className = 'seg-card';
+    card.id = 'seg-' + i;
+    card.innerHTML = `
+      <div class="seg-text">
+        <div class="seg-zh" id="zh-${i}">${wrapChars(seg.zh, i)}</div>
+        <div class="seg-en">${esc(seg.en)}</div>
+      </div>
+      <button class="seg-btn" id="sbtn-${i}" onclick="playSeg(${i})">▶</button>`;
+    wrap.appendChild(card);
+  });
+}
+
+function wrapChars(text, segIdx) {
+  return [...text].map((ch, i) => {
+    if (/[一-鿿㐀-䶿＀-￯　-〿，。！？、；：「」『』…]/.test(ch)) {
+      return `<span class="word" data-p="${i}">${ch}</span>`;
+    }
+    return esc(ch);
+  }).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ════════════════════════════════════
+   TTS — Web Speech API
+   ════════════════════════════════════ */
+function speak(text, lang) {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang || 'zh-TW';
+  u.rate = S.slowMode ? 0.68 : S.rate;
+  const vs = window.speechSynthesis.getVoices();
+  const prefix = (lang || 'zh-TW').substring(0, 5);
+  const v = vs.find(v => v.lang.replace('_','-').startsWith(prefix));
+  if (v) u.voice = v;
+  window.speechSynthesis.speak(u);
+}
+
+function playSeg(idx, fromAll = false) {
+  const btn = document.getElementById('sbtn-' + idx);
+  if (btn?.classList.contains('busy')) return;
+
+  window.speechSynthesis.cancel();
+  document.querySelectorAll('.seg-card').forEach(c => c.classList.remove('playing'));
+  document.getElementById('seg-' + idx)?.classList.add('playing');
+  curIdx = idx;
+
+  const seg = segs[idx];
+  if (!seg) return;
+
+  if (S.elKey && S.elVoiceId) {
+    playEL(seg.zh, idx, fromAll);
+  } else {
+    playWS(seg.zh, idx, fromAll);
+  }
+}
+
+function playWS(text, idx, fromAll) {
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'zh-TW';
+  u.rate = S.slowMode ? 0.68 : S.rate;
+  const vs = window.speechSynthesis.getVoices();
+  const v = vs.find(v => v.lang.replace('_','-').startsWith('zh-TW'));
+  if (v) u.voice = v;
+
+  u.onboundary = e => {
+    if (e.name !== 'word') return;
+    clearLit(idx);
+    const zh = document.getElementById('zh-' + idx);
+    if (!zh) return;
+    const end = e.charIndex + Math.max(e.charLength || 1, 1);
+    zh.querySelectorAll('.word').forEach(sp => {
+      const p = +sp.dataset.p;
+      if (p >= e.charIndex && p < end) sp.classList.add('lit');
+    });
+  };
+
+  u.onend = async () => {
+    clearLit(idx);
+    document.getElementById('seg-' + idx)?.classList.remove('playing');
+    await onSegDone(idx, fromAll);
+  };
+
+  u.onerror = () => {
+    clearLit(idx);
+    document.getElementById('seg-' + idx)?.classList.remove('playing');
+  };
+
+  window.speechSynthesis.speak(u);
+}
+
+async function playEL(text, idx, fromAll) {
+  const btn = document.getElementById('sbtn-' + idx);
+  if (btn) { btn.textContent = '⏳'; btn.classList.add('busy'); }
+
+  try {
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${S.elVoiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': S.elKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      })
+    });
+
+    if (btn) { btn.textContent = '▶'; btn.classList.remove('busy'); }
+
+    if (!r.ok) throw new Error('EL ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.playbackRate = S.slowMode ? 0.8 : 1.0;
+    audio.onended = async () => {
+      URL.revokeObjectURL(url);
+      document.getElementById('seg-' + idx)?.classList.remove('playing');
+      await onSegDone(idx, fromAll);
+    };
+    await audio.play();
+  } catch (e) {
+    if (btn) { btn.textContent = '▶'; btn.classList.remove('busy'); }
+    playWS(text, idx, fromAll);
+  }
+}
+
+function clearLit(idx) {
+  document.querySelectorAll('#zh-' + idx + ' .word').forEach(s => s.classList.remove('lit'));
+}
+
+async function onSegDone(idx, fromAll) {
+  if (!(fromAll || playingAll)) return;
+  if (S.slowMode) await wait(1500);
+  const next = idx + 1;
+  if (next < segs.length && playingAll) {
+    playSeg(next, true);
+  } else {
+    playingAll = false;
+    resetPlayAllBtn();
+  }
+}
+
+/* ════════════════════════════════════
+   PLAY ALL
+   ════════════════════════════════════ */
+function togglePlayAll() {
+  if (playingAll) {
+    playingAll = false;
+    window.speechSynthesis.cancel();
+    resetPlayAllBtn();
+    document.querySelectorAll('.seg-card').forEach(c => c.classList.remove('playing'));
+  } else {
+    playingAll = true;
+    const b = document.getElementById('btn-play-all');
+    b.textContent = '⏹ 停止';
+    b.classList.add('stop');
+    playSeg(0, true);
+  }
+}
+
+function resetPlayAllBtn() {
+  const b = document.getElementById('btn-play-all');
+  b.textContent = '▶ 播全頁';
+  b.classList.remove('stop');
+}
+
+/* ════════════════════════════════════
+   SETTINGS
+   ════════════════════════════════════ */
+function openSettings() {
+  open2('ol-settings', 'sh-settings');
+  refreshStatus();
+}
+function closeSettings() { close2('ol-settings', 'sh-settings'); }
+function showGuide() { open2('ol-guide', 'sh-guide'); }
+function closeGuide() { close2('ol-guide', 'sh-guide'); }
+
+function open2(ol, sh) {
+  document.getElementById(ol).classList.add('open');
+  document.getElementById(sh).classList.add('open');
+}
+function close2(ol, sh) {
+  document.getElementById(ol).classList.remove('open');
+  document.getElementById(sh).classList.remove('open');
+}
+
+function saveGemini() {
+  const k = document.getElementById('in-gemini').value.trim();
+  if (!k) { alert('請輸入 Key'); return; }
+  S.geminiKey = k;
+  localStorage.setItem('gk', k);
+  document.getElementById('in-gemini').value = '';
+  refreshStatus();
+  alert('✓ Gemini Key 已儲存');
+}
+
+function saveEl() {
+  const k = document.getElementById('in-el').value.trim();
+  if (!k) { alert('請輸入 ElevenLabs Key'); return; }
+  S.elKey = k;
+  localStorage.setItem('ek', k);
+  document.getElementById('in-el').value = '';
+  refreshStatus();
+}
+
+function clearVoice() {
+  if (!confirm('確定清除聲線設定？')) return;
+  S.elVoiceId = '';
+  localStorage.removeItem('ev');
+  refreshStatus();
+}
+
+function setRate(v) {
+  S.rate = parseFloat(v);
+  localStorage.setItem('rate', v);
+  document.getElementById('rate-lbl').textContent = parseFloat(v).toFixed(2) + 'x';
+}
+
+function setSlow(on) {
+  S.slowMode = on;
+  localStorage.setItem('slow', on ? '1' : '0');
+  document.documentElement.style.setProperty('--zh-font-size', on ? '26px' : '20px');
+}
+
+function refreshStatus() {
+  const gDot = document.getElementById('dot-gemini');
+  const gSt  = document.getElementById('st-gemini');
+  if (S.geminiKey) { gDot.classList.add('on'); gSt.textContent = '已設定 ✓'; }
+  else { gDot.classList.remove('on'); gSt.textContent = '未設定（必填）'; }
+
+  const eDot = document.getElementById('dot-el');
+  const eSt  = document.getElementById('st-el');
+  const vc   = document.getElementById('voice-controls');
+  if (S.elKey) {
+    eDot.classList.add('on'); eSt.textContent = '已設定 ✓';
+    vc.style.display = '';
+    const vDot = document.getElementById('dot-voice');
+    const vSt  = document.getElementById('st-voice');
+    const cb   = document.getElementById('btn-clear-voice');
+    if (S.elVoiceId) {
+      vDot.classList.add('on');
+      vSt.textContent = '聲線已設定 ✓ — 將用你的聲音唸故事';
+      cb.style.display = '';
+    } else {
+      vDot.classList.remove('on');
+      vSt.textContent = '尚未錄製';
+      cb.style.display = 'none';
+    }
+  } else {
+    eDot.classList.remove('on'); eSt.textContent = '未設定（選填）';
+    vc.style.display = 'none';
+  }
+}
+
+/* ════════════════════════════════════
+   VOICE RECORDING
+   ════════════════════════════════════ */
+function openRec() {
+  closeSettings();
+  document.getElementById('rec-overlay').classList.add('open');
+  document.getElementById('rec-hint').textContent = '點擊開始錄音';
+  document.getElementById('rec-timer').textContent = '0:00';
+  document.getElementById('rec-ring').textContent = '🎙';
+  document.getElementById('rec-ring').classList.remove('pulse');
+}
+
+async function toggleRec() {
+  if (mediaRec?.state === 'recording') {
+    mediaRec.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recChunks = [];
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+    mediaRec = new MediaRecorder(stream, { mimeType });
+    mediaRec.ondataavailable = e => recChunks.push(e.data);
+    mediaRec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recTick);
+      document.getElementById('rec-ring').classList.remove('pulse');
+      document.getElementById('rec-hint').textContent = '正在上傳聲線…';
+      document.getElementById('rec-ring').textContent = '⏳';
+      uploadVoice(new Blob(recChunks, { type: mimeType }), mimeType);
+    };
+    mediaRec.start();
+    recSec = 0;
+    document.getElementById('rec-ring').textContent = '⏹';
+    document.getElementById('rec-ring').classList.add('pulse');
+    document.getElementById('rec-hint').textContent = '錄音中… 唸完後點擊停止';
+    recTick = setInterval(() => {
+      recSec++;
+      const m = ~~(recSec / 60), s = String(recSec % 60).padStart(2, '0');
+      document.getElementById('rec-timer').textContent = `${m}:${s}`;
+      if (recSec >= 180) mediaRec?.stop();
+    }, 1000);
+  } catch (e) {
+    alert('無法取得麥克風：' + e.message);
+  }
+}
+
+async function uploadVoice(blob, mimeType) {
+  try {
+    const ext = mimeType.includes('webm') ? 'webm' : 'mp4';
+    const fd = new FormData();
+    fd.append('name', '我的聲音_' + Date.now());
+    fd.append('files', blob, 'voice.' + ext);
+
+    const r = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+      method: 'POST',
+      headers: { 'xi-api-key': S.elKey },
+      body: fd
+    });
+
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e.detail?.message || '上傳失敗 ' + r.status);
+    }
+
+    const d = await r.json();
+    S.elVoiceId = d.voice_id;
+    localStorage.setItem('ev', d.voice_id);
+    document.getElementById('rec-overlay').classList.remove('open');
+    refreshStatus();
+    openSettings();
+    alert('🎉 聲線設定成功！之後將用你的聲音唸故事。');
+  } catch (e) {
+    document.getElementById('rec-overlay').classList.remove('open');
+    openSettings();
+    alert('上傳失敗：' + e.message + '\n\n請確認 ElevenLabs API Key 正確。');
+  }
+}
+
+function cancelRec() {
+  if (mediaRec?.state === 'recording') mediaRec.stop();
+  clearInterval(recTick);
+  mediaRec = null;
+  document.getElementById('rec-overlay').classList.remove('open');
+  document.getElementById('rec-ring').classList.remove('pulse');
+  openSettings();
+}
+
+/* ════════════════════════════════════
+   SHARE
+   ════════════════════════════════════ */
+function shareApp() {
+  const url = location.origin + location.pathname;
+  const msg = `📚 免費繪本朗讀器！拍英文繪本就能自動翻譯中文+朗讀，還能用爸媽的聲音唸故事 👉 ${url}`;
+  if (navigator.share) {
+    navigator.share({ title: '故事書朗讀器', text: msg, url });
+  } else {
+    navigator.clipboard?.writeText(msg).then(() => alert('✓ 分享文字已複製！'));
+  }
+}
+
+/* ════════════════════════════════════
+   STATS
+   ════════════════════════════════════ */
+function refreshStats() {
+  const p = sessionStorage.getItem('pr') || 0;
+  const s = sessionStorage.getItem('sr') || 0;
+  document.getElementById('c-pages').textContent = p;
+  document.getElementById('c-sents').textContent = s;
+  document.getElementById('r-pages').textContent = p;
+  document.getElementById('r-sents').textContent = s;
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* iOS voice load trigger */
+const _vload = () => window.speechSynthesis.getVoices();
+window.speechSynthesis.onvoiceschanged = _vload;
+document.addEventListener('touchstart', _vload, { once: true });
+</script>
+</body>
+</html>

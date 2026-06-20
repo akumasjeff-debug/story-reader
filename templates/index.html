@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>故事書朗讀器</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --orange:  #FF6B35;
+  --orange2: #FF8C5A;
+  --yellow:  #FFD700;
+  --green:   #388E3C;
+  --bg:      #FFF8F0;
+  --card:    #FFFFFF;
+  --border:  #E8DDD0;
+  --muted:   #999;
+  --safe-b:  env(safe-area-inset-bottom, 0px);
+  --zh-font-size: 20px;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, 'Microsoft JhengHei', sans-serif;
+  background: var(--bg);
+  color: #222;
+  overflow: hidden;
+}
+
+/* ── LAYOUT ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--bg);
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--orange);
+  color: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 10px;
+}
+header h1 { font-size: 16px; font-weight: 700; flex: 1; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+
+.icon-btn {
+  background: rgba(255,255,255,.22);
+  border: none; color: #fff;
+  width: 36px; height: 36px;
+  border-radius: 50%; font-size: 17px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.ocr-dot {
+  font-size: 11px; font-weight: 700; padding: 3px 9px;
+  border-radius: 12px; background: rgba(255,255,255,.22);
+  cursor: pointer; white-space: nowrap;
+}
+
+/* ── STATES ── */
+.state { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.state.active { display: flex; }
+
+/* ══ CAPTURE STATE ══ */
+#st-capture {
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 20px;
+}
+.capture-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+.capture-title { font-size: 22px; font-weight: 700; color: #333; text-align: center; }
+.capture-subtitle { font-size: 14px; color: var(--muted); text-align: center; line-height: 1.7; margin-top: -14px; }
+
+.camera-btn {
+  width: 130px; height: 130px;
+  border-radius: 50%;
+  background: var(--orange);
+  border: none; color: #fff;
+  font-size: 54px; cursor: pointer;
+  box-shadow: 0 6px 28px rgba(255,107,53,.45);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .12s, box-shadow .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.camera-btn:active { transform: scale(.94); box-shadow: 0 2px 10px rgba(255,107,53,.35); }
+
+.capture-hints {
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: 13px; color: var(--muted);
+  text-align: center; line-height: 1.6;
+}
+.capture-hints span { display: block; }
+
+/* ══ LOADING STATE ══ */
+#st-loading {
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+.loading-img {
+  width: 120px; height: 120px;
+  object-fit: cover; border-radius: 14px;
+  border: 2px solid var(--border);
+  opacity: .7;
+}
+.loading-ring {
+  width: 48px; height: 48px;
+  border: 4px solid #e8e0d8;
+  border-top-color: var(--orange);
+  border-radius: 50%;
+  animation: spin .65s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-msg  { font-size: 16px; color: #555; font-weight: 600; }
+.loading-sub  { font-size: 13px; color: var(--muted); }
+
+/* OPT-1: 假進度條 */
+.loading-bar-wrap {
+  width: 200px; height: 6px; background: #e8e0d8; border-radius: 3px; overflow: hidden;
+}
+.loading-bar {
+  height: 100%; background: var(--orange); border-radius: 3px; width: 0%;
+  transition: width 0.3s ease;
+}
+.loading-bar.filling { animation: fill-bar 4s ease-out forwards; }
+.loading-bar.done    { width: 100% !important; animation: none; }
+@keyframes fill-bar { from { width: 0% } to { width: 90% } }
+
+/* ══ RESULTS STATE ══ */
+#st-results { overflow: hidden; }
+
+.results-top {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.res-thumb {
+  width: 68px; height: 68px;
+  object-fit: cover; border-radius: 10px;
+  border: 1px solid var(--border); flex-shrink: 0;
+}
+.res-meta { flex: 1; min-width: 0; }
+.res-title { font-size: 15px; font-weight: 700; }
+.res-count { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* OPT-3: 詞彙區塊 (FEAT-3) */
+.vocab-section {
+  padding: 10px 14px 0;
+  flex-shrink: 0;
+}
+.vocab-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.vocab-scroll {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.vocab-scroll::-webkit-scrollbar { display: none; }
+.vocab-card {
+  flex-shrink: 0;
+  background: var(--card); border: 2px solid var(--border);
+  border-radius: 10px; padding: 8px 12px;
+  text-align: center; cursor: pointer; min-width: 64px;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .12s;
+}
+.vocab-card:active { border-color: var(--orange); }
+.vocab-en { font-size: 15px; font-weight: 700; color: #222; }
+.vocab-zh { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* segments scroll area */
+.segments-scroll {
+  flex: 1; overflow-y: auto;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.seg-card {
+  background: var(--card);
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  padding: 14px 14px 14px 16px;
+  display: flex; align-items: flex-start; gap: 12px;
+  transition: border-color .12s, background .12s;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+.seg-card.playing  { border-color: var(--orange); background: #FFF3EC; }
+.seg-card.loading  { border-color: #FFCC80; }
+.seg-card.done     { opacity: .6; }
+
+.seg-content { flex: 1; min-width: 0; }
+.seg-en {
+  font-size: 13px; color: var(--muted);
+  line-height: 1.6; margin-bottom: 5px;
+}
+/* FEAT-2: 字體大小改用 CSS 變數 */
+.seg-zh {
+  font-size: var(--zh-font-size); line-height: 1.65;
+  font-weight: 500; color: #111;
+}
+
+/* FEAT-1: 字詞同步高亮 */
+.word { display: inline; }
+.word.lit { background: #FFD700; border-radius: 3px; padding: 0 1px; }
+
+/* OPT-4: 播放按鈕放大 */
+.seg-play-btn {
+  width: 48px; height: 48px; min-width: 48px;
+  border-radius: 50%; border: 2px solid var(--border);
+  background: var(--card); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .12s;
+  -webkit-tap-highlight-color: transparent;
+  margin-top: 2px;
+}
+.seg-play-btn.playing { background: var(--orange); border-color: var(--orange); color: #fff; }
+.seg-play-btn.loading { border-color: #FFCC80; }
+@keyframes pulse-border { 0%,100%{border-color:#FFCC80} 50%{border-color:var(--orange)} }
+.seg-play-btn.loading { animation: pulse-border 1s ease infinite; }
+
+/* ── BOTTOM BAR ── */
+.bottom-bar {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  padding-bottom: calc(10px + var(--safe-b));
+  display: flex; gap: 10px; flex-shrink: 0;
+}
+.btn-play-all {
+  flex: 1; padding: 15px;
+  background: var(--orange); color: #fff;
+  border: none; border-radius: 14px;
+  font-size: 17px; font-weight: 700;
+  font-family: inherit; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: opacity .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-play-all:active { opacity: .85; }
+.btn-play-all.playing { background: #D84315; }
+.btn-play-all.loading { background: #FFBA7B; }
+
+/* OPT-3: 重拍按鈕移到底部 */
+.btn-retake-bottom {
+  width: 80px; padding: 15px 0;
+  background: var(--bg); border: 2px solid var(--orange);
+  color: var(--orange); border-radius: 14px;
+  font-size: 14px; font-weight: 700;
+  font-family: inherit; cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* FEAT-5: 今晚讀了幾頁 */
+.session-stats {
+  text-align: center; font-size: 12px; color: var(--muted);
+  padding: 4px 0 0; line-height: 1.5;
+}
+
+/* ── SETTINGS SHEET ── */
+.sheet-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.42); z-index: 50;
+}
+.sheet-bg.open { display: block; }
+.settings-sheet {
+  position: fixed; bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 640px;
+  background: var(--card);
+  border-radius: 22px 22px 0 0;
+  padding: 0 20px calc(20px + var(--safe-b));
+  z-index: 51;
+}
+.sheet-handle-row { padding: 14px 0 10px; display: flex; justify-content: center; }
+.sheet-handle { width: 38px; height: 4px; background: #ddd; border-radius: 2px; }
+.sheet-title { font-size: 17px; font-weight: 700; margin-bottom: 18px; }
+
+.setting-row {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+}
+.setting-label { font-size: 14px; color: #444; min-width: 52px; }
+.setting-row select {
+  flex: 1; padding: 10px 12px;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  font-size: 14px; font-family: inherit;
+  background: var(--bg); appearance: none;
+  -webkit-appearance: none;
+}
+.setting-row input[type=range] {
+  flex: 1; accent-color: var(--orange); height: 4px;
+}
+.rate-val { min-width: 40px; font-size: 13px; color: var(--muted); text-align: right; }
+
+/* FEAT-2: 慢速魔法模式 toggle */
+.slow-toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.slow-toggle-label { font-size: 14px; color: #444; }
+.toggle-switch { position: relative; width: 48px; height: 26px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #ccc; border-radius: 26px; transition: .3s;
+}
+.toggle-slider:before {
+  content: ''; position: absolute;
+  width: 20px; height: 20px; left: 3px; bottom: 3px;
+  background: white; border-radius: 50%; transition: .3s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--orange); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); }
+
+.sheet-divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+.ocr-status-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: var(--bg);
+  border-radius: 10px; margin-bottom: 10px;
+}
+.ocr-status-label { font-size: 14px; }
+.ocr-status-val { font-size: 12px; font-weight: 700; }
+.ocr-status-val.gemini  { color: var(--green); }
+.ocr-status-val.easyocr { color: var(--orange); }
+.setup-link {
+  font-size: 13px; color: var(--orange); text-decoration: none;
+  display: block; text-align: right; margin-top: 4px;
+}
+
+/* ── API GUIDE MODAL ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.46); z-index: 60;
+  align-items: flex-end; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: var(--card);
+  border-radius: 22px 22px 0 0;
+  padding: 0 22px calc(24px + var(--safe-b));
+  width: 100%; max-width: 640px;
+  max-height: 88vh; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.modal-handle-row { padding: 14px 0 10px; display: flex; justify-content: center; }
+.modal-h2  { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+.steps { display: flex; flex-direction: column; gap: 16px; }
+.step  { display: flex; gap: 12px; }
+.step-num {
+  width: 28px; min-width: 28px; height: 28px;
+  background: var(--orange); color: #fff;
+  border-radius: 50%; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.step-body { padding-top: 4px; font-size: 14px; line-height: 1.7; }
+.step-body strong { display: block; font-size: 15px; margin-bottom: 1px; }
+.step-body code {
+  background: #F4F0EB; padding: 2px 7px; border-radius: 5px;
+  font-size: 12px; word-break: break-all; display: inline-block; margin-top: 3px;
+}
+.step-link { color: var(--orange); text-decoration: none; }
+.step-link:hover { text-decoration: underline; }
+
+.modal-note {
+  margin-top: 20px; padding: 13px 15px;
+  background: #FFF8E1; border-left: 3px solid #FFB300;
+  border-radius: 0 8px 8px 0;
+  font-size: 13px; line-height: 1.75;
+}
+.modal-actions {
+  margin-top: 20px; display: flex; gap: 10px;
+}
+.btn-primary {
+  flex: 1; padding: 14px; background: var(--orange); color: #fff;
+  border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 700; font-family: inherit;
+  cursor: pointer; text-align: center; text-decoration: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-secondary {
+  padding: 14px 18px; background: var(--bg);
+  border: 2px solid var(--border); border-radius: 12px;
+  font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <h1>📚 故事書朗讀器</h1>
+    <div class="header-right">
+      <span class="ocr-dot" id="ocr-dot" onclick="openSettings()">⏳</span>
+      <button class="icon-btn" onclick="openSettings()" title="設定">⚙️</button>
+    </div>
+  </header>
+
+  <!-- ── STATE: CAPTURE ── -->
+  <div class="state active" id="st-capture">
+    <div class="capture-area">
+      <div class="capture-title">拍下繪本頁面</div>
+      <div class="capture-subtitle">拍完自動辨識文字並翻譯成中文</div>
+
+      <button class="camera-btn" onclick="triggerCapture()">📷</button>
+
+      <div class="capture-hints">
+        <span>📖 對準繪本頁面，文字清晰即可</span>
+        <span>🌐 英文書會自動翻譯成繁體中文</span>
+        <span>🔊 每句可以單獨點擊朗讀</span>
+      </div>
+    </div>
+    <input type="file" id="file-input" accept="image/*" capture="environment"
+           style="display:none" onchange="handleCapture(event)">
+  </div>
+
+  <!-- ── STATE: LOADING ── -->
+  <div class="state" id="st-loading">
+    <img id="loading-thumb" class="loading-img" src="" alt="">
+    <div class="loading-ring"></div>
+    <div class="loading-msg" id="loading-msg">辨識文字中...</div>
+    <div class="loading-sub" id="loading-sub">請稍候</div>
+    <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
+  </div>
+
+  <!-- ── STATE: RESULTS ── -->
+  <div class="state" id="st-results">
+    <!-- OPT-3: 移除 results-top 的重拍按鈕 -->
+    <div class="results-top">
+      <img id="res-thumb" class="res-thumb" src="" alt="">
+      <div class="res-meta">
+        <div class="res-title">辨識完成</div>
+        <div class="res-count" id="res-count">共 0 個句子</div>
+      </div>
+    </div>
+
+    <!-- FEAT-3: 詞彙區塊 -->
+    <div class="vocab-section" id="vocab-section" style="display:none">
+      <div class="vocab-title">📚 本頁詞彙</div>
+      <div class="vocab-scroll" id="vocab-list"></div>
+    </div>
+
+    <div class="segments-scroll" id="segments-list"></div>
+
+    <!-- FEAT-5: 今晚讀了幾頁 -->
+    <div class="session-stats" id="session-stats"></div>
+
+    <div class="bottom-bar">
+      <!-- OPT-3: 重拍按鈕移到底部 -->
+      <button class="btn-retake-bottom" onclick="resetToCapture()">🔄 重拍</button>
+      <button class="btn-play-all" id="btn-play-all" onclick="togglePlayAll()">
+        ▶ 播整頁
+      </button>
+    </div>
+  </div>
+
+</div><!-- .app -->
+
+<!-- ── SETTINGS SHEET ── -->
+<div class="sheet-bg" id="sheet-bg" onclick="closeSettings()"></div>
+<div class="settings-sheet" id="settings-sheet">
+  <div class="sheet-handle-row"><div class="sheet-handle"></div></div>
+  <div class="sheet-title">⚙️ 設定</div>
+
+  <div class="setting-row">
+    <span class="setting-label">聲音</span>
+    <select id="voice-sel">
+      <option value="zh-TW-female">台灣女聲（曉晨）</option>
+      <option value="zh-TW-male">台灣男聲（雲哲）</option>
+      <option value="en-US-female">英文女聲</option>
+      <option value="en-US-male">英文男聲</option>
+    </select>
+  </div>
+
+  <div class="setting-row">
+    <span class="setting-label">語速</span>
+    <input type="range" id="rate-slider" min="-50" max="50" value="-25" step="5"
+           oninput="document.getElementById('rate-val').textContent=(this.value>0?'+':'')+this.value+'%'">
+    <span class="rate-val" id="rate-val">-25%</span>
+  </div>
+
+  <!-- FEAT-2: 慢速魔法模式 toggle -->
+  <div class="slow-toggle-row">
+    <span class="slow-toggle-label">🐢 慢速魔法模式</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="slow-mode-toggle" onchange="toggleSlowMode(this.checked)">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+
+  <div class="sheet-divider"></div>
+
+  <div class="ocr-status-row">
+    <span class="ocr-status-label">OCR 引擎</span>
+    <span class="ocr-status-val" id="ocr-status-val">載入中...</span>
+  </div>
+  <a class="setup-link" onclick="openApiGuide()">🔑 設定 Gemini API Key（輕量版）→</a>
+</div>
+
+<!-- ── API GUIDE MODAL ── -->
+<div class="modal-overlay" id="api-modal" onclick="closeApiGuideOnBg(event)">
+  <div class="modal-box">
+    <div class="modal-handle-row"><div class="sheet-handle"></div></div>
+    <div class="modal-h2">🔑 Gemini API Key 設定指南</div>
+    <p class="modal-sub">換用雲端 AI OCR，省去 2GB 模型下載、啟動瞬間完成</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>開啟 Google AI Studio</strong>
+          在電腦瀏覽器前往：<br>
+          <a class="step-link" href="https://aistudio.google.com/app/apikey" target="_blank">
+            aistudio.google.com/app/apikey
+          </a>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>用 Google 帳號登入</strong>
+          免費，不需信用卡
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>建立 API Key</strong>
+          點「Create API key」→ 選「Create API key in new project」
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>複製 Key</strong>
+          畫面出現以 <code>AIza</code> 開頭的字串，點 Copy 複製
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>填入設定檔（電腦操作）</strong>
+          用記事本開啟：<br>
+          <code id="guide-config-path">story_reader\config.env</code><br>
+          將 <code>GEMINI_API_KEY=</code> 後面貼上 Key，存檔
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <strong>重新啟動</strong>
+          關掉黑色視窗，再雙擊 <code>run.bat</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-note">
+      💡 免費額度：每天 1,500 次，個人使用完全夠<br>
+      🔒 圖片只傳給 Google 做辨識，處理完即刪除
+    </div>
+
+    <div class="modal-actions">
+      <a class="btn-primary" href="https://aistudio.google.com/app/apikey" target="_blank">
+        前往取得 API Key
+      </a>
+      <button class="btn-secondary" onclick="closeApiGuide()">關閉</button>
+    </div>
+  </div>
+</div>
+
+<audio id="main-audio"></audio>
+
+<script>
+/* ════════════════════════════
+   STATE
+   ════════════════════════════ */
+let segments    = [];   // [{en, zh, audioId?, isLoading?, timings?}]
+let playingIdx  = -1;   // currently highlighted segment (-1 = none)
+let playAllMode = false;
+let ocrEngine   = 'unknown';
+let capturedUrl = null;
+let lastVocab   = [];   // FEAT-3: vocab list from API
+let slowMode    = false; // FEAT-2: 慢速魔法模式
+
+const audio = document.getElementById('main-audio');
+
+/* ════════════════════════════
+   INIT
+   ════════════════════════════ */
+window.addEventListener('load', async () => {
+  try {
+    const d = await fetch('/api/status').then(r => r.json());
+    ocrEngine = d.ocr;
+    updateOcrBadge();
+  } catch(e) {}
+});
+
+function updateOcrBadge() {
+  const dot = document.getElementById('ocr-dot');
+  const val = document.getElementById('ocr-status-val');
+  if (ocrEngine === 'gemini') {
+    dot.textContent = '🌐 Gemini';
+    dot.style.background = 'rgba(56,142,60,.35)';
+    if (val) { val.textContent = 'Gemini Flash（雲端）'; val.className = 'ocr-status-val gemini'; }
+  } else {
+    dot.textContent = '💻 EasyOCR';
+    dot.style.background = 'rgba(255,255,255,.22)';
+    if (val) { val.textContent = 'EasyOCR（本地）'; val.className = 'ocr-status-val easyocr'; }
+  }
+}
+
+/* ════════════════════════════
+   BUG-2: 圖片壓縮
+   ════════════════════════════ */
+async function compressImage(file, maxPx = 1920, quality = 0.85) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const max = Math.max(w, h);
+      if (max > maxPx) { const r = maxPx / max; w = Math.round(w*r); h = Math.round(h*r); }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}
+
+/* ════════════════════════════
+   CAPTURE
+   ════════════════════════════ */
+function triggerCapture() {
+  document.getElementById('file-input').value = '';
+  document.getElementById('file-input').click();
+}
+
+async function handleCapture(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // capturedUrl 用原始 file（顯示用）
+  if (capturedUrl) URL.revokeObjectURL(capturedUrl);
+  capturedUrl = URL.createObjectURL(file);
+
+  // BUG-2: 壓縮圖片
+  const compressed = await compressImage(file);
+
+  showState('loading');
+  document.getElementById('loading-thumb').src = capturedUrl;
+
+  // OPT-1: 三段進度顯示 + 假進度條
+  setLoadingMsg('辨識文字中...', '用 AI 掃描頁面');
+  document.getElementById('loading-bar').className = 'loading-bar filling';
+
+  try {
+    const fd = new FormData();
+    fd.append('image', compressed); // 上傳壓縮後的 blob
+
+    const data = await fetch('/api/scan', { method: 'POST', body: fd }).then(r => r.json());
+
+    // OPT-1: fetch 返回後更新訊息
+    setLoadingMsg('翻譯中...', '轉換成繁體中文');
+
+    if (data.error) throw new Error(data.error);
+
+    // FEAT-3: 儲存 vocab
+    lastVocab = data.vocab || [];
+    // 加入 timings 欄位 (FEAT-1)
+    segments = data.segments.map(s => ({ ...s, audioId: null, isLoading: false, timings: [] }));
+
+    // OPT-1: 完成
+    document.getElementById('loading-bar').className = 'loading-bar done';
+    setLoadingMsg('完成！', '');
+    showResults(capturedUrl, segments);
+  } catch(err) {
+    setLoadingMsg('❌ 辨識失敗', err.message);
+    setTimeout(resetToCapture, 2500);
+  }
+}
+
+/* ════════════════════════════
+   RESULTS
+   ════════════════════════════ */
+function showResults(imgUrl, segs) {
+  document.getElementById('res-thumb').src = imgUrl;
+  document.getElementById('res-count').textContent = `共 ${segs.length} 個句子`;
+
+  const list = document.getElementById('segments-list');
+  list.innerHTML = '';
+
+  segs.forEach((seg, i) => {
+    const card = document.createElement('div');
+    card.className = 'seg-card';
+    card.id = `seg-${i}`;
+    card.innerHTML = `
+      <div class="seg-content">
+        ${seg.en ? `<div class="seg-en">${escHtml(seg.en)}</div>` : ''}
+        <div class="seg-zh">${escHtml(seg.zh || seg.en)}</div>
+      </div>
+      <button class="seg-play-btn" id="pbtn-${i}" onclick="event.stopPropagation(); playSeg(${i})">▶</button>
+    `;
+    card.onclick = () => playSeg(i);
+    list.appendChild(card);
+  });
+
+  // FEAT-3: 顯示詞彙區塊
+  const vocabSection = document.getElementById('vocab-section');
+  const vocabList    = document.getElementById('vocab-list');
+  if (lastVocab.length > 0) {
+    vocabList.innerHTML = lastVocab.map((v, i) =>
+      `<div class="vocab-card" onclick="playVocab(${i})">` +
+      `<div class="vocab-en">${escHtml(v.en)}</div>` +
+      `<div class="vocab-zh">${escHtml(v.zh)}</div>` +
+      `</div>`
+    ).join('');
+    vocabSection.style.display = '';
+  } else {
+    vocabSection.style.display = 'none';
+  }
+
+  // FEAT-5: 今晚讀了幾頁
+  let pagesRead     = parseInt(sessionStorage.getItem('pagesRead') || '0') + 1;
+  let sentencesRead = parseInt(sessionStorage.getItem('sentencesRead') || '0') + segs.length;
+  sessionStorage.setItem('pagesRead', pagesRead);
+  sessionStorage.setItem('sentencesRead', sentencesRead);
+  document.getElementById('session-stats').textContent =
+    `今晚讀了 ${pagesRead} 頁，共 ${sentencesRead} 個句子 📖`;
+
+  playingIdx  = -1;
+  playAllMode = false;
+  document.getElementById('btn-play-all').textContent = '▶ 播整頁';
+  document.getElementById('btn-play-all').className   = 'btn-play-all';
+  showState('results');
+}
+
+/* ════════════════════════════
+   AUDIO
+   ════════════════════════════ */
+async function playSeg(idx) {
+  // BUG-4: 防止重複點擊 — seg 宣告移到最前面
+  const seg = segments[idx];
+  if (seg.isLoading) return;
+
+  // If tapping the current one → toggle pause
+  if (playingIdx === idx && !audio.paused) {
+    audio.pause();
+    setSegUI(idx, 'idle');
+    playingIdx = -1;
+    if (playAllMode) {
+      playAllMode = false;
+      document.getElementById('btn-play-all').textContent = '▶ 播整頁';
+      document.getElementById('btn-play-all').className   = 'btn-play-all';
+    }
+    return;
+  }
+
+  // Stop current
+  audio.pause();
+  if (playingIdx >= 0) setSegUI(playingIdx, 'idle');
+
+  playingIdx = idx;
+
+  // Ensure audio loaded
+  if (!seg.audioId) {
+    seg.isLoading = true; // BUG-4: 設定 loading 旗標
+    setSegUI(idx, 'loading');
+    try {
+      const text = seg.zh || seg.en;
+      const rate = rateStr();
+      const data = await fetch('/api/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: voiceKey(), rate, volume: '+50%' })
+      }).then(r => r.json());
+
+      if (data.error) throw new Error(data.error);
+      seg.audioId = data.audio_id;
+      seg.timings = data.timings || []; // FEAT-1: 儲存 timings
+
+      // FEAT-1: 把 seg-zh 拆成逐字 spans
+      const zhEl = document.querySelector(`#seg-${idx} .seg-zh`);
+      if (zhEl && seg.timings.length > 0 && !zhEl.dataset.split) {
+        const chars = Array.from(seg.zh || '');
+        zhEl.innerHTML = chars.map((c, i) => `<span class="word" data-i="${i}">${escHtml(c)}</span>`).join('');
+        zhEl.dataset.split = '1';
+      }
+    } catch(e) {
+      seg.isLoading = false; // BUG-4: 清除 loading 旗標（失敗）
+      setSegUI(idx, 'idle');
+      playingIdx = -1;
+      return;
+    }
+    seg.isLoading = false; // BUG-4: 清除 loading 旗標（成功）
+  }
+
+  setSegUI(idx, 'playing');
+  scrollSegIntoView(idx);
+
+  // FEAT-1: 字詞同步高亮 ontimeupdate
+  audio.ontimeupdate = () => {
+    if (!seg.timings || !seg.timings.length) return;
+    const t = audio.currentTime;
+    const zhEl = document.querySelector(`#seg-${playingIdx} .seg-zh`);
+    if (!zhEl) return;
+    let cur = -1;
+    for (let i = 0; i < seg.timings.length; i++) {
+      if (t >= seg.timings[i].offset && t < seg.timings[i].offset + seg.timings[i].duration) {
+        cur = i; break;
+      }
+    }
+    zhEl.querySelectorAll('.word').forEach((el, i) => {
+      el.classList.toggle('lit', i === cur);
+    });
+  };
+
+  audio.src = `/api/audio/${seg.audioId}`;
+  audio.onended = () => onSegEnded(idx);
+  audio.play().catch(() => { setSegUI(idx, 'idle'); playingIdx = -1; });
+}
+
+async function onSegEnded(idx) {
+  setSegUI(idx, 'done');
+  playingIdx = -1;
+
+  if (playAllMode) {
+    const next = idx + 1;
+    if (next < segments.length) {
+      // OPT-2: 預合成下一句
+      preloadSeg(next + 1);
+
+      // FEAT-2: 慢速模式停頓 1500ms
+      if (slowMode) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      playSeg(next);
+    } else {
+      // All done
+      playAllMode = false;
+      document.getElementById('btn-play-all').textContent = '▶ 播整頁';
+      document.getElementById('btn-play-all').className   = 'btn-play-all';
+      // Reset done state after a moment
+      setTimeout(() => {
+        segments.forEach((_, i) => setSegUI(i, 'idle'));
+      }, 800);
+    }
+  }
+}
+
+/* ════════════════════════════
+   OPT-2: 預合成
+   ════════════════════════════ */
+async function preloadSeg(idx) {
+  if (idx >= segments.length) return;
+  const seg = segments[idx];
+  if (seg.audioId || seg.isLoading) return;
+  seg.isLoading = true;
+  try {
+    const text = seg.zh || seg.en;
+    const rate = rateStr();
+    const data = await fetch('/api/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: voiceKey(), rate, volume: '+50%' })
+    }).then(r => r.json());
+    if (!data.error) {
+      seg.audioId = data.audio_id;
+      seg.timings = data.timings || [];
+    }
+  } catch(e) {}
+  finally { seg.isLoading = false; }
+}
+
+/* ════════════════════════════
+   FEAT-3: 詞彙卡朗讀
+   ════════════════════════════ */
+async function playVocab(idx) {
+  const v = lastVocab[idx];
+  if (!v) return;
+  try {
+    const data = await fetch('/api/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: v.en, voice: 'en-US-female', rate: '-10%', volume: '+50%' })
+    }).then(r => r.json());
+    if (data.audio_id) {
+      audio.src = `/api/audio/${data.audio_id}`;
+      audio.play().catch(() => {});
+    }
+  } catch(e) {}
+}
+
+/* ════════════════════════════
+   PLAY ALL
+   ════════════════════════════ */
+async function togglePlayAll() {
+  if (playAllMode) {
+    // Stop
+    audio.pause();
+    if (playingIdx >= 0) setSegUI(playingIdx, 'idle');
+    playingIdx  = -1;
+    playAllMode = false;
+    document.getElementById('btn-play-all').textContent = '▶ 播整頁';
+    document.getElementById('btn-play-all').className   = 'btn-play-all';
+    segments.forEach((_, i) => setSegUI(i, 'idle'));
+    return;
+  }
+
+  playAllMode = true;
+  document.getElementById('btn-play-all').textContent = '■ 停止';
+  document.getElementById('btn-play-all').className   = 'btn-play-all playing';
+  segments.forEach((_, i) => setSegUI(i, 'idle'));
+  await playSeg(0);
+}
+
+/* ════════════════════════════
+   UI HELPERS
+   ════════════════════════════ */
+function setSegUI(idx, mode) {
+  const card = document.getElementById(`seg-${idx}`);
+  const btn  = document.getElementById(`pbtn-${idx}`);
+  if (!card || !btn) return;
+  card.className = 'seg-card' + (mode === 'playing' ? ' playing' : mode === 'loading' ? ' loading' : mode === 'done' ? ' done' : '');
+  btn.className  = 'seg-play-btn' + (mode === 'playing' ? ' playing' : mode === 'loading' ? ' loading' : '');
+  btn.textContent = mode === 'playing' ? '⏸' : mode === 'loading' ? '…' : '▶';
+}
+
+function scrollSegIntoView(idx) {
+  const el = document.getElementById(`seg-${idx}`);
+  if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function showState(name) {
+  ['capture','loading','results'].forEach(s => {
+    const el = document.getElementById(`st-${s}`);
+    el.classList.toggle('active', s === name);
+  });
+}
+
+function resetToCapture() {
+  audio.pause();
+  playingIdx  = -1;
+  playAllMode = false;
+  segments    = [];
+  lastVocab   = [];
+  showState('capture');
+}
+
+function setLoadingMsg(msg, sub) {
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('loading-sub').textContent = sub;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function voiceKey() { return document.getElementById('voice-sel').value; }
+
+/* FEAT-2: 修改 rateStr，慢速模式優先 */
+function rateStr() {
+  if (slowMode) return '-40%';
+  const v = parseInt(document.getElementById('rate-slider').value);
+  return (v >= 0 ? '+' : '') + v + '%';
+}
+
+/* ════════════════════════════
+   FEAT-2: 慢速魔法模式
+   ════════════════════════════ */
+function toggleSlowMode(on) {
+  slowMode = on;
+  document.documentElement.style.setProperty('--zh-font-size', on ? '26px' : '20px');
+  // 清除現有 audioId（rate 變了，需重新合成）
+  segments.forEach(s => { s.audioId = null; s.timings = []; });
+}
+
+/* ════════════════════════════
+   SETTINGS SHEET
+   ════════════════════════════ */
+function openSettings() {
+  updateOcrBadge();
+  document.getElementById('sheet-bg').classList.add('open');
+  document.getElementById('settings-sheet').style.display = 'block';
+}
+function closeSettings() {
+  document.getElementById('sheet-bg').classList.remove('open');
+  document.getElementById('settings-sheet').style.display = 'none';
+}
+
+/* ════════════════════════════
+   API GUIDE MODAL
+   ════════════════════════════ */
+function openApiGuide() {
+  closeSettings();
+  document.getElementById('api-modal').classList.add('open');
+}
+function closeApiGuide() {
+  document.getElementById('api-modal').classList.remove('open');
+}
+function closeApiGuideOnBg(e) {
+  if (e.target === document.getElementById('api-modal')) closeApiGuide();
+}
+</script>
+</body>
+</html>

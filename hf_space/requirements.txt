@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+torch
+torchaudio
+huggingface_hub
+openvoice @ git+https://github.com/myshell-ai/OpenVoice.git
+melo-tts @ git+https://github.com/myshell-ai/MeloTTS.git

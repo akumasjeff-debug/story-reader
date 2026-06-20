@@ -346,10 +346,29 @@ input:checked + .slider::before { transform: translateX(22px); }
     <div id="voice-controls" style="display:none;margin-top:12px">
       <div class="status-row">
         <div class="dot" id="dot-voice"></div>
-        <span style="font-size:13px;color:#555" id="st-voice">尚未錄製</span>
+        <span style="font-size:13px;color:#555" id="st-voice">尚未設定</span>
       </div>
+
+      <!-- 方法 A：直接貼 Voice ID -->
+      <div class="s-label" style="margin-top:10px">方法 A：貼上 Voice ID（推薦）</div>
+      <input class="s-input" id="in-voice-id" placeholder="從 ElevenLabs 網站複製 Voice ID…">
+      <button class="s-btn purple" onclick="saveVoiceId()">使用此聲線</button>
+      <div class="s-info" style="margin-top:6px">
+        <b>取得 Voice ID 步驟：</b><br>
+        1. 去 elevenlabs.io → 左側「聲音庫」<br>
+        2. 點「新增聲音」→「即時聲音克隆」→ 上傳錄音檔<br>
+        3. 建立後點聲音旁的 ID 圖示 → 複製<br>
+        4. 貼上欄位 → 按「使用此聲線」
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- 方法 B：App 內錄音（可能因瀏覽器限制而失敗） -->
+      <div class="s-label">方法 B：直接在 App 錄音</div>
       <button class="s-btn purple" id="btn-rec" onclick="openRec()">🎙 錄製聲線（30 秒）</button>
-      <button class="s-btn danger" id="btn-clear-voice" style="display:none;margin-top:6px" onclick="clearVoice()">清除聲線</button>
+      <div class="s-info">若出現「上傳失敗」請改用方法 A。</div>
+
+      <button class="s-btn danger" id="btn-clear-voice" style="display:none;margin-top:10px" onclick="clearVoice()">清除聲線</button>
     </div>
     <div class="s-info">設定後 App 將用你的聲音朗讀故事。<br>ElevenLabs 免費版每月 10,000 字（約 60 頁繪本）。</div>
   </div>
@@ -805,6 +824,16 @@ function saveEl() {
   localStorage.setItem('ek', k);
   document.getElementById('in-el').value = '';
   refreshStatus();
+}
+
+function saveVoiceId() {
+  const id = document.getElementById('in-voice-id').value.trim();
+  if (!id) { alert('請輸入 Voice ID'); return; }
+  S.elVoiceId = id;
+  localStorage.setItem('ev', id);
+  document.getElementById('in-voice-id').value = '';
+  refreshStatus();
+  alert('✓ 聲線已設定！');
 }
 
 function clearVoice() {

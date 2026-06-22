@@ -687,6 +687,8 @@ function playSeg(idx, fromAll = false) {
   const seg = segs[idx];
   if (!seg) return;
 
+  if (!fromAll) window._ovWarned = false;   // 手動點播放 → 重新允許提醒一次
+
   if (S.ovUrl && S.ovVoiceId) {
     playOV(seg.zh, idx, fromAll);
   } else {
@@ -754,6 +756,20 @@ async function playOV(text, idx, fromAll) {
     await audio.play();
   } catch (e) {
     if (btn) { btn.textContent = '▶'; btn.classList.remove('busy'); }
+    // 不再「靜默」吞掉錯誤——告訴使用者為何沒用到爸媽的聲音（每次播放只提醒一次）
+    if (!window._ovWarned) {
+      window._ovWarned = true;
+      const msg = String(e.message || e);
+      let hint;
+      if (/404|not found|找不到/i.test(msg)) {
+        hint = '聲線在伺服器上不見了。免費聲線伺服器閒置後會清空暫存，錄好的聲音會遺失，需要重新錄製。\n\n（建議改成把聲線存在手機上就不會再不見——要的話跟我說。）';
+      } else if (/Failed to fetch|NetworkError|load failed|503|502|TypeError/i.test(msg)) {
+        hint = '聲線伺服器正在喚醒中（免費版閒置會休眠）。請等約 30 秒，再按一次播放。';
+      } else {
+        hint = '聲線合成失敗：' + msg;
+      }
+      alert('⚠ 這次用的是手機內建聲音，不是爸媽的聲音。\n\n原因：' + hint);
+    }
     playWS(text, idx, fromAll);
   }
 }
@@ -785,6 +801,7 @@ function togglePlayAll() {
     document.querySelectorAll('.seg-card').forEach(c => c.classList.remove('playing'));
   } else {
     playingAll = true;
+    window._ovWarned = false;   // 新的一輪播放 → 允許提醒一次
     const b = document.getElementById('btn-play-all');
     b.textContent = '⏹ 停止';
     b.classList.add('stop');

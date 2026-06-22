@@ -34,17 +34,33 @@ _load_env()
 
 # ── OCR ENGINE ──────────────────────────────────────────────
 GEMINI_KEY      = os.environ.get('GEMINI_API_KEY', '')
-_gemini_model   = None
+# 依序嘗試，前面的失敗（如模型下架 404）就自動降級到下一個
+GEMINI_MODELS   = ['gemini-2.5-flash', 'gemini-3.5-flash',
+                   'gemini-2.0-flash', 'gemini-flash-latest']
+_gemini_ok      = None   # 記住上次成功的模型名稱，下次優先用
 _easyocr_reader = None
 
 
-def _gemini():
-    global _gemini_model
-    if _gemini_model is None:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        _gemini_model = genai.GenerativeModel('gemini-2.5-flash')
-    return _gemini_model
+def _gemini_generate(parts):
+    """依序嘗試可用模型，回傳第一個成功的 response。"""
+    global _gemini_ok
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_KEY)
+    # 上次成功的模型排最前面
+    candidates = ([_gemini_ok] if _gemini_ok else []) + \
+                 [m for m in GEMINI_MODELS if m != _gemini_ok]
+    last_err = None
+    for name in candidates:
+        try:
+            resp = genai.GenerativeModel(name).generate_content(parts)
+            if name != _gemini_ok:
+                print(f"Gemini 使用模型：{name}")
+            _gemini_ok = name
+            return resp
+        except Exception as e:
+            last_err = e
+            print(f"模型 {name} 失敗，嘗試下一個：{e}")
+    raise last_err if last_err else RuntimeError('無可用的 Gemini 模型')
 
 
 def _easyocr():
@@ -76,7 +92,7 @@ def _sort(results):
 
 def _ocr(img: Image.Image) -> str:
     if GEMINI_KEY:
-        resp = _gemini().generate_content([
+        resp = _gemini_generate([
             "Extract all text from this image exactly as it appears. "
             "Return only the raw text, preserve paragraph breaks, "
             "no explanations or extra content.",

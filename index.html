@@ -552,34 +552,44 @@ Return ONLY valid JSON, no markdown, no explanation:
 
 If no readable text is found, return: {"segments":[],"vocab":[]}`;
 
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${S.geminiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [
-          { text: prompt },
-          { inline_data: { mime_type: 'image/jpeg', data: b64 } }
-        ]}],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
-      })
-    }
-  );
+  // 依序嘗試，模型下架(404)就自動降級到下一個
+  const MODELS = ['gemini-2.5-flash', 'gemini-3.5-flash',
+                  'gemini-2.0-flash', 'gemini-flash-latest'];
+  let lastStatus = 0;
 
-  if (!r.ok) {
+  for (const model of MODELS) {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${S.geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+          ]}],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+        })
+      }
+    );
+
+    if (r.ok) {
+      const d = await r.json();
+      const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const m = txt.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('回傳格式錯誤，請重拍');
+      return JSON.parse(m[0]);
+    }
+
     const e = await r.json().catch(() => ({}));
     const msg = e.error?.message || '';
-    if (msg.includes('API_KEY')) throw new Error('API Key 無效，請重新設定');
+    if (msg.includes('API_KEY') || msg.includes('API key')) throw new Error('API Key 無效，請重新設定');
     if (r.status === 429) throw new Error('今日請求次數已達上限，明天再試');
-    throw new Error('Gemini 錯誤 ' + r.status);
+    lastStatus = r.status;
+    // 其餘錯誤（含模型不存在 404）→ 換下一個模型再試
   }
 
-  const d = await r.json();
-  const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const m = txt.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('回傳格式錯誤，請重拍');
-  return JSON.parse(m[0]);
+  throw new Error('Gemini 無可用模型 (' + lastStatus + ')');
 }
 
 /* ════════════════════════════════════

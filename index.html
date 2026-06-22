@@ -583,11 +583,16 @@ If no readable text is found, return: {"segments":[],"vocab":[]}`;
         if (fr === 'MAX_TOKENS') throw new Error('內容太長被截斷，請拍清楚一點或分頁');
         throw new Error('Gemini 無回傳內容' + (fr ? ' (' + fr + ')' : ''));
       }
-      // 去掉可能的 markdown 圍欄後抓出 JSON
+      // 去掉可能的 markdown 圍欄
       const clean = txt.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      // 1) 直接解析（responseMimeType 已要求純 JSON）
+      try { return JSON.parse(clean); } catch (_) {}
+      // 2) 退而求其次：擷取第一個 {...} 區塊
       const m = clean.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error('回傳格式錯誤，請重拍');
-      return JSON.parse(m[0]);
+      if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
+      // 都失敗 → 印出原始內容方便診斷，並把前 80 字帶進錯誤訊息
+      console.error('Gemini 原始回傳：', txt);
+      throw new Error('回傳格式錯誤：' + txt.slice(0, 80));
     }
 
     const e = await r.json().catch(() => ({}));

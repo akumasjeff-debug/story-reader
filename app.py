@@ -43,7 +43,7 @@ def _gemini():
     if _gemini_model is None:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_KEY)
-        _gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+        _gemini_model = genai.GenerativeModel('gemini-2.5-flash')
     return _gemini_model
 
 

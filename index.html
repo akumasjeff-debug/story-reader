@@ -568,15 +568,24 @@ If no readable text is found, return: {"segments":[],"vocab":[]}`;
             { text: prompt },
             { inline_data: { mime_type: 'image/jpeg', data: b64 } }
           ]}],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' }
         })
       }
     );
 
     if (r.ok) {
       const d = await r.json();
-      const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const m = txt.match(/\{[\s\S]*\}/);
+      const cand = d.candidates?.[0];
+      // 思考型模型可能有多個 parts，全部串起來
+      const txt = (cand?.content?.parts || []).map(p => p.text || '').join('').trim();
+      if (!txt) {
+        const fr = cand?.finishReason;
+        if (fr === 'MAX_TOKENS') throw new Error('內容太長被截斷，請拍清楚一點或分頁');
+        throw new Error('Gemini 無回傳內容' + (fr ? ' (' + fr + ')' : ''));
+      }
+      // 去掉可能的 markdown 圍欄後抓出 JSON
+      const clean = txt.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      const m = clean.match(/\{[\s\S]*\}/);
       if (!m) throw new Error('回傳格式錯誤，請重拍');
       return JSON.parse(m[0]);
     }
